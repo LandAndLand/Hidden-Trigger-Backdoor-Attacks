@@ -142,7 +142,9 @@ def train(model, epoch):
 	# PERTURBATION PARAMETERS
 	eps1 = (eps/255.0)
 	lr1 = lr
-
+	'''
+	从trigger的候选队伍中选取其中一个trigger
+	'''
 	trigger = Image.open('data/triggers/trigger_{}.png'.format(trigger_id)).convert('RGB')
 	trigger = trans_trigger(trigger).unsqueeze(0).cuda(gpu)
 
@@ -155,6 +157,9 @@ def train(model, epoch):
 	else:
 		logging.info("Using multiple source for this experiment.")
 
+	'''
+	将事先规定好的source images组合起来组成multi_source_filelist.txt文件
+	'''
 	with open("data/{}/multi_source_filelist.txt".format(experimentID),"w") as f1:
 		with open(source_wnid_list) as f2:
 			source_wnids = f2.readlines()
@@ -204,6 +209,10 @@ def train(model, epoch):
 		input2 = input2.cuda(gpu)
 		pert = nn.Parameter(torch.zeros_like(input2, requires_grad=True).cuda(gpu))
 
+		'''
+		trigger位置固定模式： 事先指定了trigger在source images上的位置，所有source images的trigger的位置都相同
+		trigger位置随机模式：所有的source images的trigger的位置都不相同
+		'''
 		for z in range(input1.size(0)):
 			if not rand_loc:
 				start_x = 224-patch_size-5
@@ -218,6 +227,9 @@ def train(model, epoch):
 		output1, feat1 = model(input1)
 		feat1 = feat1.detach().clone()
 
+		'''
+		存储patched source images
+		'''
 		for k in range(input1.size(0)):
 			img_ctr = img_ctr+1
 			# input2_pert = (pert[k].clone().cpu())
@@ -231,12 +243,25 @@ def train(model, epoch):
 		for j in range(num_iter):
 			lr1 = adjust_learning_rate(lr, j)
 
+			'''
+			feat1： patched source images feature
+			feat2： pert + target  images feature
+			'''
 			output2, feat2 = model(input2+pert)
 
 			# FIND CLOSEST PAIR WITHOUT REPLACEMENT
 			feat11 = feat1.clone()
+			'''
+			feat1: [B, n], n为图像转换得到的一个n维特征， alnex7中，n=4096
+			feat2: [B, n]
+			求feat1和feat2之间的norm 2距离
+			dist: [B, 1]
+			'''
 			dist = torch.cdist(feat1, feat2)
 			for _ in range(feat2.size(0)):
+				'''
+				找到dist中最小值所在的下标
+				'''
 				dist_min_index = (dist == torch.min(dist)).nonzero().squeeze()
 				feat1[dist_min_index[1]] = feat11[dist_min_index[0]]
 				dist[dist_min_index[0], dist_min_index[1]] = 1e5
